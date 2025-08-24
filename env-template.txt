@@ -1,0 +1,12 @@
+# Copy this content to a new file named .env.local in the zoom-clone directory
+
+# AssemblyAI API Key
+# Get your API key from https://www.assemblyai.com/
+ASSEMBLYAI_API_KEY=your_assemblyai_api_key_here
+
+# MongoDB Connection String
+MONGODB_URI=mongodb://localhost:27017/zoom-clone
+
+# Next.js App URL
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+

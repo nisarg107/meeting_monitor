@@ -10,7 +10,7 @@ import {
   useCallStateHooks,
 } from '@stream-io/video-react-sdk';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Users, LayoutList } from 'lucide-react';
+import { Users, LayoutList, FileText } from 'lucide-react';
 
 import {
   DropdownMenu,
@@ -21,6 +21,7 @@ import {
 } from './ui/dropdown-menu';
 import Loader from './Loader';
 import EndCallButton from './EndCallButton';
+import TranscriptionPanel from './TranscriptionPanel';
 import { cn } from '@/lib/utils';
 
 type CallLayoutType = 'grid' | 'speaker-left' | 'speaker-right';
@@ -31,6 +32,7 @@ const MeetingRoom = () => {
   const router = useRouter();
   const [layout, setLayout] = useState<CallLayoutType>('speaker-left');
   const [showParticipants, setShowParticipants] = useState(false);
+  const [showTranscription, setShowTranscription] = useState(false);
   const { useCallCallingState } = useCallStateHooks();
 
   // for more detail about types of CallingState see: https://getstream.io/video/docs/react/ui-cookbook/ringing-call/#incoming-call-panel
@@ -94,8 +96,19 @@ const MeetingRoom = () => {
             <Users size={20} className="text-white" />
           </div>
         </button>
+        <button onClick={() => setShowTranscription((prev) => !prev)}>
+          <div className=" cursor-pointer rounded-2xl bg-[#19232d] px-4 py-2 hover:bg-[#4c535b]  ">
+            <FileText size={20} className="text-white" />
+          </div>
+        </button>
         {!isPersonalRoom && <EndCallButton />}
       </div>
+
+      {/* Transcription Panel */}
+      <TranscriptionPanel 
+        isOpen={showTranscription} 
+        onToggle={() => setShowTranscription(!showTranscription)} 
+      />
     </section>
   );
 };
