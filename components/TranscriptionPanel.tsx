@@ -160,10 +160,10 @@ const TranscriptionPanel = ({ isOpen, onToggle }: TranscriptionPanelProps) => {
               >
                 <div className="flex items-start justify-between mb-1">
                   <span className="text-blue-400 font-medium text-sm">
-                    Speaker
+                    {transcript.speakerName || 'Speaker'}
                   </span>
                   <span className="text-gray-400 text-xs">
-                    {formatTime(new Date())}
+                    {formatTime(transcript.timestamp || new Date())}
                   </span>
                 </div>
                 <p className="text-white text-sm">

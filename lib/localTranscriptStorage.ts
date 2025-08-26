@@ -8,6 +8,8 @@ interface TranscriptEntry {
   end: number;
   isFinal: boolean;
   timestamp?: Date;
+  speakerId?: string;
+  speakerName?: string;
 }
 
 interface MeetingInfo {
@@ -193,7 +195,9 @@ Transcript:
       content += `[${timeLabel}]\n`;
       
       group.transcripts.forEach(transcript => {
-        content += `  ${transcript.text}\n`;
+        const who = transcript.speakerName || 'Speaker';
+        const when = transcript.timestamp ? new Date(transcript.timestamp).toLocaleTimeString() : '';
+        content += `  ${who}${when ? ` (${when})` : ''}: ${transcript.text}\n`;
       });
       
       content += '\n';
