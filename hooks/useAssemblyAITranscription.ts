@@ -57,25 +57,92 @@ export const useAssemblyAITranscription = (meetingId: string) => {
     }
   }, [participants, localParticipant, user]);
 
-  // Setup audio capture using the working captions approach
+  // Setup audio capture to include all participants (tab/system audio preferred, otherwise mix remote tracks)
   const setupAudioCapture = useCallback(async () => {
     console.log('🎤 Setting up audio capture...');
     
-    // Try to capture system/tab audio to include all participants
+    // Try to capture system/tab audio to include all participants (best quality & simplest)
+    // Many browsers require this to be triggered by a user gesture.
     let audioStream: MediaStream | null = null;
     try {
-      audioStream = await (navigator.mediaDevices as any).getDisplayMedia({
-        audio: true,
+      // Prefer current tab audio with echo cancellation off for cleaner diarization
+      const displayConstraints: any = {
         video: false,
-      });
-      console.log('🎵 Got system audio stream (includes all participants)');
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          suppressLocalAudioPlayback: true,
+        },
+        preferCurrentTab: true,
+      };
+      audioStream = await (navigator.mediaDevices as any).getDisplayMedia(displayConstraints);
+      // Ensure at least one audio track
+      if (!audioStream || !audioStream.getAudioTracks().length) {
+        throw new Error('No audio track in displayMedia stream');
+      }
+      console.log('🎵 Got system/tab audio stream (includes all participants)');
     } catch (e) {
-      console.warn('⚠️ Could not get system audio, falling back to local microphone:', e);
+      console.warn('⚠️ Could not get system/tab audio, attempting to mix remote participant tracks:', e);
       try {
+        // Create an AudioContext mix and add: local mic + remote participant audio tracks (if available)
+        const tempContext = new AudioContext({ sampleRate: 16000 });
+        const destination = tempContext.createMediaStreamDestination();
+
+        // 1) Try to add remote participant tracks from Stream SDK
+        try {
+          const remoteParticipants = participants.filter(p => p.userId !== localParticipant?.userId);
+          for (const p of remoteParticipants) {
+            // Stream SDK exposes audio stream on participant?.audioStream (implementation-dependent)
+            // Try known fields; if not available, skip silently.
+            const anyParticipant: any = p as any;
+            const mediaStream: MediaStream | null = anyParticipant.audioStream || anyParticipant.mediaStream || null;
+            if (mediaStream) {
+              const remoteTracks = mediaStream.getAudioTracks();
+              if (remoteTracks.length) {
+                const remoteStream = new MediaStream([remoteTracks[0]]);
+                const remoteSource = tempContext.createMediaStreamSource(remoteStream);
+                const gain = tempContext.createGain();
+                gain.gain.value = 1.0;
+                remoteSource.connect(gain).connect(destination);
+              }
+            }
+          }
+        } catch (mixErr) {
+          console.warn('⚠️ Unable to auto-detect remote participant tracks:', mixErr);
+        }
+
+        // 2) Add local microphone as fallback so we at least capture the speaker
+        try {
+          const mic = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
+            video: false,
+          });
+          if (mic.getAudioTracks().length) {
+            const micSource = tempContext.createMediaStreamSource(mic);
+            const gain = tempContext.createGain();
+            gain.gain.value = 1.0;
+            micSource.connect(gain).connect(destination);
+          }
+        } catch (_) {}
+
+        // If we ended up with at least one node connected, use the mixed stream
+        if (destination.stream.getAudioTracks().length) {
+          audioStream = destination.stream;
+          // Keep tempContext alive by storing it until full setup completes
+          audioContextRef.current = tempContext;
+          console.log('🎚️ Using mixed audio stream (remote + local if available)');
+        } else {
+          // Final fallback: just mic
+          audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          console.log('🎤 Fallback to local microphone only');
+          // Close temporary context if unused
+          try { tempContext.close(); } catch {}
+        }
+      } catch (mixAllErr) {
+        console.error('❌ Mixing attempt failed, falling back to microphone:', mixAllErr);
         audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        console.log('🎤 Got local microphone stream');
-      } catch (micErr) {
-        throw new Error('Could not capture audio for transcription');
+        console.log('🎤 Fallback to local microphone only');
       }
     }
     
@@ -86,7 +153,8 @@ export const useAssemblyAITranscription = (meetingId: string) => {
     streamRef.current = audioStream;
 
     // Route audio through AudioWorklet to get raw PCM 16k mono frames
-    const audioContext = new AudioContext({ sampleRate: 16000 });
+    // Reuse any pre-created context (when mixing) to avoid disconnects
+    const audioContext = audioContextRef.current || new AudioContext({ sampleRate: 16000 });
     audioContextRef.current = audioContext;
     const source = audioContext.createMediaStreamSource(audioStream);
     sourceRef.current = source;
