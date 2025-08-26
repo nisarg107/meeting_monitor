@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { useUser } from '@clerk/nextjs';
 import dbConnect from '@/lib/mongodb';
 import Transcript from '@/lib/models/Transcript';
 import AssemblyAIWebSocketService from '@/lib/assemblyai-ws';
+
+// Define the TranscriptionResult interface to match the expected type
+interface TranscriptionResult {
+  text: string;
+  confidence: number;
+  start: number;
+  end: number;
+  isFinal: boolean;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,7 +47,7 @@ export async function POST(request: NextRequest) {
 
       // Save transcripts to MongoDB
       const transcripts = await Promise.all(
-        transcriptionResults.map(async (result) => {
+        transcriptionResults.map(async (result: TranscriptionResult) => {
           const transcript = new Transcript({
             meetingId,
             userId,

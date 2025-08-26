@@ -17,17 +17,48 @@ const StreamVideoProvider = ({ children }: { children: ReactNode }) => {
     if (!isLoaded || !user) return;
     if (!API_KEY) throw new Error('Stream API key is missing');
 
+    // Get proper display name for Stream
+    const getDisplayName = () => {
+      if (user?.fullName) return user.fullName;
+      if (user?.firstName && user?.lastName) {
+        return `${user.firstName} ${user.lastName}`;
+      }
+      if (user?.emailAddresses?.[0]?.emailAddress) {
+        const email = user.emailAddresses[0].emailAddress;
+        return email.split('@')[0]; // Use email prefix as fallback
+      }
+      return user?.username || 'Meeting Participant';
+    };
+
+    const displayName = getDisplayName();
+    console.log('🎯 Setting Stream user name:', displayName);
+    console.log('🎯 User data:', {
+      id: user?.id,
+      fullName: user?.fullName,
+      firstName: user?.firstName,
+      lastName: user?.lastName,
+      email: user?.emailAddresses?.[0]?.emailAddress,
+      username: user?.username
+    });
+
     const client = new StreamVideoClient({
       apiKey: API_KEY,
       user: {
         id: user?.id,
-        name: user?.username || user?.id,
+        name: displayName,
         image: user?.imageUrl,
       },
       tokenProvider,
     });
 
     setVideoClient(client);
+
+    // Cleanup function
+    return () => {
+      if (client) {
+        client.disconnectUser();
+      }
+    };
   }, [user, isLoaded]);
 
   if (!videoClient) return <Loader />;

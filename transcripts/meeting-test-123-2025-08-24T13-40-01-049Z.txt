@@ -1,0 +1,30 @@
+================================================================================
+MEETING TRANSCRIPT
+================================================================================
+
+Meeting Details:
+  Meeting ID: test-meeting-123
+  Title: Test Team Meeting
+  Start Time: 01/15/2024, 10:30:00
+  End Time: 01/15/2024, 11:00:00
+  Participants: John Doe, Jane Smith, Bob Johnson
+
+Transcript:
+--------------------------------------------------------------------------------
+
+[00:00]
+  Good morning everyone, let's start our daily standup (95% confidence)
+
+[00:05]
+  I'll go first. Yesterday I completed the user authentication feature (92% confidence)
+
+[00:15]
+  Today I'm planning to work on the dashboard improvements (88% confidence)
+
+[00:25]
+  Any blockers? No, everything is going smoothly (90% confidence)
+
+--------------------------------------------------------------------------------
+Transcript generated on: 01/15/2024, 11:00:15
+Total entries: 4
+================================================================================

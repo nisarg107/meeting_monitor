@@ -1,0 +1,30 @@
+# Vercel Environment Variables Template
+# Copy these to your Vercel project environment variables
+
+# AssemblyAI API Key
+ASSEMBLYAI_API_KEY=your_assemblyai_api_key_here
+
+# MongoDB Connection String (use MongoDB Atlas)
+MONGODB_URI=your_mongodb_atlas_connection_string
+
+# Stream.io API Keys
+NEXT_PUBLIC_STREAM_API_KEY=your_stream_public_api_key
+STREAM_SECRET_KEY=your_stream_secret_key
+
+# App URLs (update with your Vercel domain)
+NEXT_PUBLIC_APP_URL=https://your-app-name.vercel.app
+NEXT_PUBLIC_BASE_URL=https://your-app-name.vercel.app
+
+# Optional: AssemblyAI Model
+ASSEMBLYAI_REALTIME_MODEL=universal-2
+
+# Optional: Captions Provider
+NEXT_PUBLIC_CAPTIONS_PROVIDER=assemblyai
+
+# Optional: Captions Proxy Port
+CAPTIONS_PROXY_PORT=8787
+NEXT_PUBLIC_CAPTIONS_PROXY_PORT=8787
+
+# Clerk Authentication (if using)
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key
+CLERK_SECRET_KEY=your_clerk_secret_key

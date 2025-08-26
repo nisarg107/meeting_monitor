@@ -1,0 +1,23 @@
+================================================================================
+MEETING TRANSCRIPT
+================================================================================
+
+Meeting Details:
+  Meeting ID: test-meeting-456
+  Title: Product Review Meeting
+  Start Time: 01/15/2024, 14:00:00
+  Participants: Alice Brown, Charlie Wilson
+
+Transcript:
+--------------------------------------------------------------------------------
+
+[00:00]
+  Welcome to the product review meeting (96% confidence)
+
+[00:03]
+  Let's discuss the new features we've implemented (89% confidence)
+
+--------------------------------------------------------------------------------
+Transcript generated on: 01/15/2024, 14:05:00
+Total entries: 2
+================================================================================

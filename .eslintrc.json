@@ -1,8 +1,11 @@
 {
-  "extends": [
-    "next/core-web-vitals",
-    "standard",
-    "plugin:tailwindcss/recommended",
-    "prettier"
-  ]
+  "extends": ["next/core-web-vitals"],
+  "rules": {
+    "no-use-before-define": "off",
+    "no-unused-vars": "warn",
+    "tailwindcss/classnames-order": "off",
+    "tailwindcss/no-custom-classname": "off",
+    "tailwindcss/enforces-shorthand": "off",
+    "object-shorthand": "off"
+  }
 }

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { headers } from 'next/headers';
 
 export async function GET(request: NextRequest) {
   // This route will be handled by Socket.IO for WebSocket connections

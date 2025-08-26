@@ -22,6 +22,18 @@
   color: white;
 }
 
+/* Ensure participant names are properly displayed */
+.str-video__participant-details__name {
+  color: white !important;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.str-video__participant-details__user-id {
+  color: #a0a0a0 !important;
+  font-size: 12px;
+}
+
 .str-video__menu-container {
   color: white;
 }

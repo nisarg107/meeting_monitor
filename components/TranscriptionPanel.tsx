@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { Mic, MicOff, Trash2, FileText } from 'lucide-react';
+import React, { useState } from 'react';
+import { Mic, MicOff, Trash2, FileText, Download } from 'lucide-react';
 import { useAssemblyAITranscription } from '@/hooks/useAssemblyAITranscription';
 import { useParams } from 'next/navigation';
+import localTranscriptStorageClient from '@/lib/localTranscriptStorageClient';
 
 interface TranscriptionPanelProps {
   isOpen: boolean;
@@ -13,7 +14,7 @@ interface TranscriptionPanelProps {
 const TranscriptionPanel = ({ isOpen, onToggle }: TranscriptionPanelProps) => {
   const { id } = useParams();
   const meetingId = Array.isArray(id) ? id[0] : id;
-  const { transcripts, isTranscribing, startTranscription, stopTranscription, clearTranscripts, error } = useAssemblyAITranscription(meetingId || '');
+  const { transcripts, isTranscribing, startTranscription, stopTranscription, clearTranscripts, error, savedTranscriptPath, setSavedTranscriptPath } = useAssemblyAITranscription(meetingId || '');
   const [autoScroll, setAutoScroll] = useState(true);
 
   const formatTime = (timestamp: Date) => {
@@ -84,6 +85,20 @@ const TranscriptionPanel = ({ isOpen, onToggle }: TranscriptionPanelProps) => {
             <Trash2 size={16} />
             Clear
           </button>
+          
+          <button
+            onClick={() => {
+              const filename = localTranscriptStorageClient.saveTranscript();
+              if (filename) {
+                setSavedTranscriptPath(filename);
+              }
+            }}
+            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg transition-colors"
+            disabled={transcripts.length === 0}
+          >
+            <Download size={16} />
+            Save
+          </button>
         </div>
 
         {/* Status */}
@@ -104,9 +119,23 @@ const TranscriptionPanel = ({ isOpen, onToggle }: TranscriptionPanelProps) => {
               )}
             </div>
           )}
+          {savedTranscriptPath && (
+            <div className="text-green-400 text-sm bg-green-900/20 p-2 rounded border border-green-600">
+              ✅ Transcript saved to: {savedTranscriptPath.split('/').pop()}
+            </div>
+          )}
           {!isTranscribing && !error && transcripts.length === 0 && (
             <div className="text-gray-400 text-sm">
               💡 Click Start to begin live transcription
+            </div>
+          )}
+          {transcripts.length > 0 && (
+            <div className="text-blue-400 text-sm">
+              📝 {transcripts.length} transcript entries captured
+              <br />
+              <span className="text-xs text-gray-400">
+                (Filtered from {localTranscriptStorageClient.getTranscriptCount()} total entries)
+              </span>
             </div>
           )}
         </div>
@@ -143,19 +172,6 @@ const TranscriptionPanel = ({ isOpen, onToggle }: TranscriptionPanelProps) => {
                     <span className="text-gray-400">...</span>
                   )}
                 </p>
-                {transcript.confidence > 0 && (
-                  <div className="mt-1">
-                    <div className="w-full bg-gray-700 rounded-full h-1">
-                      <div
-                        className="bg-blue-500 h-1 rounded-full transition-all duration-300"
-                        style={{ width: `${transcript.confidence * 100}%` }}
-                      ></div>
-                    </div>
-                    <span className="text-xs text-gray-400">
-                      Confidence: {Math.round(transcript.confidence * 100)}%
-                    </span>
-                  </div>
-                )}
               </div>
             ))
           )}
