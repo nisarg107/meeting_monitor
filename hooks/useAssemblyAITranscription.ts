@@ -32,22 +32,34 @@ export const useAssemblyAITranscription = (meetingId: string) => {
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const speakerDetectionTimerRef = useRef<NodeJS.Timeout | null>(null);
   const currentSpeakerRef = useRef<{ id: string; name: string } | null>(null);
+  const lastSpeakingParticipantRef = useRef<{ id: string; name: string } | null>(null);
+  const speakerLabelMapRef = useRef<Record<string, { id: string; name: string }>>({});
+  const recentSpeakingAtRef = useRef<Record<string, number>>({});
 
   // Detect current speaker using Stream participant state
   const detectCurrentSpeaker = useCallback(() => {
     const speakingParticipants = participants.filter(p => p.isSpeaking);
     
     if (speakingParticipants.length > 0) {
-      const currentSpeaker = speakingParticipants[0];
-      currentSpeakerRef.current = {
-        id: currentSpeaker.userId,
-        name: currentSpeaker.name || currentSpeaker.userId?.split('@')[0] || 'Speaker'
-      };
+      // Prefer a non-local participant if available
+      const remoteFirst = speakingParticipants.find(p => p.userId !== localParticipant?.userId) || speakingParticipants[0];
+      const name = remoteFirst.name || remoteFirst.userId?.split('@')[0] || 'Speaker';
+      const info = { id: remoteFirst.userId, name };
+      currentSpeakerRef.current = info;
+      lastSpeakingParticipantRef.current = info;
+      // Update recent speaking timestamp
+      const now = Date.now();
+      recentSpeakingAtRef.current[remoteFirst.userId] = now;
+      // Also record any others flagged as speaking
+      speakingParticipants.forEach(p => {
+        recentSpeakingAtRef.current[p.userId] = now;
+      });
     } else if (localParticipant?.isSpeaking) {
       currentSpeakerRef.current = {
         id: localParticipant.userId,
         name: localParticipant.name || localParticipant.userId?.split('@')[0] || 'Speaker'
       };
+      recentSpeakingAtRef.current[localParticipant.userId] = Date.now();
     } else {
       // Fallback to local participant
       currentSpeakerRef.current = {
@@ -299,10 +311,10 @@ export const useAssemblyAITranscription = (meetingId: string) => {
           };
         }
         
-        // Start speaker detection timer (check every 500ms)
+        // Start speaker detection timer (check frequently for better attribution)
         speakerDetectionTimerRef.current = setInterval(() => {
           detectCurrentSpeaker();
-        }, 500);
+        }, 200);
       };
 
       ws.onmessage = (event) => {
@@ -329,14 +341,65 @@ export const useAssemblyAITranscription = (meetingId: string) => {
                 isFinal: true,
               };
 
-              // Use detected current speaker
-              const currentSpeaker = currentSpeakerRef.current || {
-                id: localParticipant?.userId || user?.id || 'user-1',
-                name: localParticipant?.name || user?.fullName || 'Speaker'
-              };
-              
-              const speakerId = currentSpeaker.id;
-              const speakerName = currentSpeaker.name;
+              // Determine speaker attribution using recent Stream speaking state and AssemblyAI diarization label
+              let attributed: { id: string; name: string } | null = null;
+
+              const nowTs = Date.now();
+              const recentWindowMs = 1500;
+
+              // 1) Prefer a remote participant who spoke very recently
+              const recentRemote = participants
+                .filter(p => p.userId !== localParticipant?.userId)
+                .map(p => ({ p, ts: recentSpeakingAtRef.current[p.userId] || 0 }))
+                .filter(({ ts }) => nowTs - ts <= recentWindowMs)
+                .sort((a, b) => b.ts - a.ts);
+
+              if (recentRemote.length > 0) {
+                const sel = recentRemote[0].p;
+                attributed = {
+                  id: sel.userId,
+                  name: sel.name || sel.userId?.split('@')[0] || 'Participant',
+                };
+              }
+
+              // 2) If AssemblyAI provided a diarized speaker label, try to bind that label to the most recent remote speaker
+              if (speaker) {
+                const label = String(speaker);
+                if (!attributed && speakerLabelMapRef.current[label]) {
+                  attributed = speakerLabelMapRef.current[label];
+                } else if (attributed) {
+                  // Bind this label to the chosen participant for future turns
+                  speakerLabelMapRef.current[label] = attributed;
+                }
+              }
+
+              // Fallbacks if we could not attribute via diarization mapping
+              if (!attributed) {
+                // Prefer an actively speaking remote participant
+                const remoteSpeaking = participants.find(p => p.isSpeaking && p.userId !== localParticipant?.userId);
+                if (remoteSpeaking) {
+                  attributed = {
+                    id: remoteSpeaking.userId,
+                    name: remoteSpeaking.name || remoteSpeaking.userId?.split('@')[0] || 'Participant',
+                  };
+                }
+              }
+
+              if (!attributed && lastSpeakingParticipantRef.current && lastSpeakingParticipantRef.current.id !== localParticipant?.userId) {
+                attributed = lastSpeakingParticipantRef.current;
+              }
+
+              if (!attributed) {
+                // Final fallback: detected current speaker or local participant
+                const cur = currentSpeakerRef.current || {
+                  id: localParticipant?.userId || user?.id || 'user-1',
+                  name: localParticipant?.name || user?.fullName || 'Speaker',
+                };
+                attributed = cur;
+              }
+
+              const speakerId = attributed.id;
+              const speakerName = attributed.name;
 
               const transcriptWithSpeaker = {
                 ...result,
