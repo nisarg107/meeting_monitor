@@ -13,6 +13,20 @@ export interface TranscriptMessage {
   timestamp: Date;
 }
 
+export interface InsightMessage {
+  meetingId: string;
+  insights: Array<{
+    _id: string;
+    text: string;
+    category: 'decision' | 'risk' | 'blocker' | 'commitment' | 'action_item' | 'question' | 'concern';
+    urgency: 'low' | 'medium' | 'high';
+    confidence: number;
+    speakerName?: string;
+    timestamp: string;
+    context?: string;
+  }>;
+}
+
 export class SocketService {
   private io: SocketIOServer | null = null;
 
@@ -48,6 +62,12 @@ export class SocketService {
   public broadcastTranscript(meetingId: string, transcript: TranscriptMessage) {
     if (this.io) {
       this.io.to(meetingId).emit('transcript', transcript);
+    }
+  }
+
+  public broadcastInsights(meetingId: string, insights: InsightMessage) {
+    if (this.io) {
+      this.io.to(meetingId).emit('insights', insights);
     }
   }
 

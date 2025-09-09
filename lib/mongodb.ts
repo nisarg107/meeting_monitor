@@ -1,9 +1,12 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/zoom-clone';
+const MONGODB_URI =
+  process.env.MONGODB_URI || "mongodb://localhost:27017/zoom-clone";
 
 if (!MONGODB_URI) {
-  throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
+  throw new Error(
+    "Please define the MONGODB_URI environment variable inside .env.local"
+  );
 }
 
 interface GlobalMongoose {
@@ -16,21 +19,17 @@ declare global {
   var mongoose: GlobalMongoose | undefined;
 }
 
-let cached: GlobalMongoose = global.mongoose || { conn: null, promise: null };
+let cached = global.mongoose as GlobalMongoose;
 
 if (!cached) {
   cached = global.mongoose = { conn: null, promise: null };
 }
 
 async function dbConnect() {
-  if (cached.conn) {
-    return cached.conn;
-  }
+  if (cached.conn) return cached.conn;
 
   if (!cached.promise) {
-    const opts = {
-      bufferCommands: false,
-    };
+    const opts = { bufferCommands: false };
 
     cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
       return mongoose;
@@ -47,5 +46,8 @@ async function dbConnect() {
   return cached.conn;
 }
 
+// ✅ default export
 export default dbConnect;
 
+// ✅ optional named export (so existing imports still work)
+export const connectToDatabase = dbConnect;

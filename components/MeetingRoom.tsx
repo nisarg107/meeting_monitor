@@ -10,7 +10,7 @@ import {
   useCallStateHooks,
 } from '@stream-io/video-react-sdk';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Users, LayoutList, FileText } from 'lucide-react';
+import { Users, LayoutList, FileText, Lightbulb } from 'lucide-react';
 
 import {
   DropdownMenu,
@@ -22,8 +22,10 @@ import {
 import Loader from './Loader';
 import EndCallButton from './EndCallButton';
 import TranscriptionPanel from './TranscriptionPanel';
+import InsightsPanel from './InsightsPanel';
 import { cn } from '@/lib/utils';
-
+ 
+  
 type CallLayoutType = 'grid' | 'speaker-left' | 'speaker-right';
 
 const MeetingRoom = () => {
@@ -33,6 +35,9 @@ const MeetingRoom = () => {
   const [layout, setLayout] = useState<CallLayoutType>('speaker-left');
   const [showParticipants, setShowParticipants] = useState(false);
   const [showTranscription, setShowTranscription] = useState(false);
+  const [showInsights, setShowInsights] = useState(true);
+  const [panelTab, setPanelTab] = useState<'transcript' | 'glossary'>('transcript');
+ 
   const { useCallCallingState } = useCallStateHooks();
 
   // for more detail about types of CallingState see: https://getstream.io/video/docs/react/ui-cookbook/ringing-call/#incoming-call-panel
@@ -96,9 +101,19 @@ const MeetingRoom = () => {
             <Users size={20} className="text-white" />
           </div>
         </button>
-        <button onClick={() => setShowTranscription((prev) => !prev)}>
+        <button onClick={() => { setPanelTab('transcript'); setShowTranscription((prev) => !prev); }}>
           <div className=" cursor-pointer rounded-2xl bg-[#19232d] px-4 py-2 hover:bg-[#4c535b]  ">
             <FileText size={20} className="text-white" />
+          </div>
+        </button>
+        <button onClick={() => { setPanelTab('glossary'); setShowTranscription(true); }}>
+          <div className=" cursor-pointer rounded-2xl bg-[#19232d] px-4 py-2 hover:bg-[#4c535b]  ">
+            <span className="text-white text-sm">Glossary</span>
+          </div>
+        </button>
+        <button onClick={() => setShowInsights((prev) => !prev)}>
+          <div className=" cursor-pointer rounded-2xl bg-[#19232d] px-4 py-2 hover:bg-[#4c535b]  ">
+            <Lightbulb size={20} className="text-white" />
           </div>
         </button>
         {!isPersonalRoom && <EndCallButton />}
@@ -108,7 +123,17 @@ const MeetingRoom = () => {
       <TranscriptionPanel 
         isOpen={showTranscription} 
         onToggle={() => setShowTranscription(!showTranscription)} 
+        activeTab={panelTab}
+        onChangeTab={setPanelTab}
       />
+
+      {/* Insights Panel */}
+      <InsightsPanel 
+        meetingId={searchParams.get('id') || 'default-meeting'}
+        isVisible={showInsights}
+        onToggle={() => setShowInsights(!showInsights)}
+      />
+      
     </section>
   );
 };

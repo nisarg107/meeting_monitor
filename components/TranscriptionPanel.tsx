@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { Mic, MicOff, Trash2, FileText, Download } from 'lucide-react';
+import GlossaryLookup from './GlossaryLookup';
 import { useAssemblyAITranscription } from '@/hooks/useAssemblyAITranscription';
 import { useParams } from 'next/navigation';
 import localTranscriptStorageClient from '@/lib/localTranscriptStorageClient';
@@ -9,9 +10,11 @@ import localTranscriptStorageClient from '@/lib/localTranscriptStorageClient';
 interface TranscriptionPanelProps {
   isOpen: boolean;
   onToggle: () => void;
+  activeTab: 'transcript' | 'glossary';
+  onChangeTab: (tab: 'transcript' | 'glossary') => void;
 }
 
-const TranscriptionPanel = ({ isOpen, onToggle }: TranscriptionPanelProps) => {
+const TranscriptionPanel = ({ isOpen, onToggle, activeTab, onChangeTab }: TranscriptionPanelProps) => {
   const { id } = useParams();
   const meetingId = Array.isArray(id) ? id[0] : id;
   const { transcripts, isTranscribing, startTranscription, stopTranscription, clearTranscripts, error, savedTranscriptPath, setSavedTranscriptPath } = useAssemblyAITranscription(meetingId || '');
@@ -42,11 +45,11 @@ const TranscriptionPanel = ({ isOpen, onToggle }: TranscriptionPanelProps) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed right-4 top-20 w-80 bg-dark-1 rounded-lg shadow-lg border border-dark-2 z-50">
+    <div className="fixed right-4 top-20 w-[360px] bg-dark-1 rounded-lg shadow-lg border border-dark-2 z-50">
       <div className="flex items-center justify-between p-4 border-b border-dark-2">
         <div className="flex items-center gap-2">
           <FileText size={20} className="text-white" />
-          <h3 className="text-white font-semibold">Live Transcript</h3>
+          <h3 className="text-white font-semibold">Panel</h3>
         </div>
         <button
           onClick={onToggle}
@@ -56,7 +59,25 @@ const TranscriptionPanel = ({ isOpen, onToggle }: TranscriptionPanelProps) => {
         </button>
       </div>
 
+      {/* Tabs */}
+      <div className="px-4 pt-3 flex items-center gap-2">
+        <button
+          className={`px-3 py-1 rounded text-sm ${activeTab === 'transcript' ? 'bg-blue-600 text-white' : 'bg-dark-2 text-gray-300'}`}
+          onClick={() => onChangeTab('transcript')}
+        >
+          Transcript
+        </button>
+        <button
+          className={`px-3 py-1 rounded text-sm ${activeTab === 'glossary' ? 'bg-blue-600 text-white' : 'bg-dark-2 text-gray-300'}`}
+          onClick={() => onChangeTab('glossary')}
+        >
+          Glossary
+        </button>
+      </div>
+
       <div className="p-4">
+        {activeTab === 'transcript' && (
+        <>
         {/* Transcription Controls */}
         <div className="flex items-center gap-2 mb-4">
           {!isTranscribing ? (
@@ -176,6 +197,14 @@ const TranscriptionPanel = ({ isOpen, onToggle }: TranscriptionPanelProps) => {
             ))
           )}
         </div>
+        </>
+        )}
+
+        {activeTab === 'glossary' && (
+          <div className="pt-1">
+            <GlossaryLookup />
+          </div>
+        )}
       </div>
     </div>
   );

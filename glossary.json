@@ -1,0 +1,57 @@
+[
+  {
+    "industry": "manufacturing",
+    "term": "TPM",
+    "definition": "Total Productive Maintenance – proactive maintenance strategy to maximize equipment uptime."
+  },
+  {
+    "industry": "manufacturing",
+    "term": "Advanced Product Quality Planning (APQP)",
+    "definition": "Framework ensuring high-quality product development by addressing issues early in design and production."
+  },
+  {
+    "industry": "manufacturing",
+    "term": "CMM",
+    "definition": "Coordinate-Measuring Machine – device to verify product dimensions meet tight tolerances."
+  },
+  {
+    "industry": "manufacturing",
+    "term": "SCADA",
+    "definition": "Supervisory Control and Data Acquisition – system for remote monitoring and control of industrial processes."
+  },
+  {
+    "industry": "manufacturing",
+    "term": "MES",
+    "definition": "Manufacturing Execution System – software that tracks, controls, and records production processes in real time."
+  },
+  {
+    "industry": "manufacturing",
+    "term": "Computer-Integrated Manufacturing (CIM)",
+    "definition": "Fully computer-controlled manufacturing system integrating all production and planning functions."
+  },
+  {
+    "industry": "manufacturing",
+    "term": "Mass Production",
+    "definition": "High-volume, continuous production of standardized products, typically using assembly lines."
+  },
+  {
+    "industry": "manufacturing",
+    "term": "Lead Time",
+    "definition": "Time from ordering or scheduling a part to its availability for production."
+  },
+  {
+    "industry": "manufacturing",
+    "term": "Make to Stock (MTS)",
+    "definition": "Production strategy where goods are made based on demand forecasts for future sale."
+  },
+  {
+    "industry": "manufacturing",
+    "term": "Make to Order (MTO)",
+    "definition": "Production method where products are manufactured only after customer orders are received."
+  },
+  {
+    "industry": "manufacturing",
+    "term": "Make to Assemble (MTA)",
+    "definition": "Hybrid production strategy: parts are stocked and assembled upon customer orders."
+  }
+]

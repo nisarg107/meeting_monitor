@@ -13,8 +13,8 @@ interface TranscriptionResult {
   timestamp?: Date;
 }
 
-// Import local storage utility
 import localTranscriptStorageClient from '@/lib/localTranscriptStorageClient';
+import { useInsights } from './useInsights';
 
 export const useAssemblyAITranscription = (meetingId: string) => {
   const { user } = useUser();
@@ -22,6 +22,9 @@ export const useAssemblyAITranscription = (meetingId: string) => {
   const { useLocalParticipant, useParticipants } = useCallStateHooks();
   const localParticipant = useLocalParticipant();
   const participants = useParticipants();
+  
+  // Initialize insights processing
+  const { addTranscriptChunk, startInsightsProcessing, stopInsightsProcessing } = useInsights(meetingId);
   
   const [transcripts, setTranscripts] = useState<TranscriptionResult[]>([]);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -38,58 +41,31 @@ export const useAssemblyAITranscription = (meetingId: string) => {
   const rescanTimerRef = useRef<NodeJS.Timeout | null>(null);
   const speakerDetectionTimerRef = useRef<NodeJS.Timeout | null>(null);
   const currentSpeakerRef = useRef<{ id: string; name: string } | null>(null);
-<<<<<<< HEAD
-  const lastSpeakingParticipantRef = useRef<{ id: string; name: string } | null>(null);
-  const speakerLabelMapRef = useRef<Record<string, { id: string; name: string }>>({});
-  const recentSpeakingAtRef = useRef<Record<string, number>>({});
-=======
   const diarizationMapRef = useRef<Map<string, { id: string; name: string }>>(new Map());
   type SpeakingSample = { ts: number; active: string[] };
   const speakingHistoryRef = useRef<SpeakingSample[]>([]);
-  // Keep latest participant states to avoid stale closures inside timers/WS handlers
   const participantsRef = useRef(participants);
   const localParticipantRef = useRef(localParticipant);
   useEffect(() => { participantsRef.current = participants; }, [participants]);
   useEffect(() => { localParticipantRef.current = localParticipant; }, [localParticipant]);
->>>>>>> origin/feature/speaker-attribution
 
-  // Detect current speaker using Stream participant state
   const detectCurrentSpeaker = useCallback(() => {
     const parts = participantsRef.current || [];
     const local = localParticipantRef.current;
     const speakingParticipants = parts.filter(p => p.isSpeaking);
     
     if (speakingParticipants.length > 0) {
-<<<<<<< HEAD
-      // Prefer a non-local participant if available
-      const remoteFirst = speakingParticipants.find(p => p.userId !== localParticipant?.userId) || speakingParticipants[0];
-      const name = remoteFirst.name || remoteFirst.userId?.split('@')[0] || 'Speaker';
-      const info = { id: remoteFirst.userId, name };
-      currentSpeakerRef.current = info;
-      lastSpeakingParticipantRef.current = info;
-      // Update recent speaking timestamp
-      const now = Date.now();
-      recentSpeakingAtRef.current[remoteFirst.userId] = now;
-      // Also record any others flagged as speaking
-      speakingParticipants.forEach(p => {
-        recentSpeakingAtRef.current[p.userId] = now;
-      });
-    } else if (localParticipant?.isSpeaking) {
-=======
       const currentSpeaker = speakingParticipants[0];
       currentSpeakerRef.current = {
         id: currentSpeaker.userId,
         name: currentSpeaker.name || currentSpeaker.userId?.split('@')[0] || 'Speaker'
       };
     } else if (local?.isSpeaking) {
->>>>>>> origin/feature/speaker-attribution
       currentSpeakerRef.current = {
         id: local.userId,
         name: local.name || local.userId?.split('@')[0] || 'Speaker'
       };
-      recentSpeakingAtRef.current[localParticipant.userId] = Date.now();
     } else {
-      // Fallback to local participant
       currentSpeakerRef.current = {
         id: local?.userId || user?.id || 'user-1',
         name: local?.name || user?.fullName || 'Speaker'
@@ -97,107 +73,6 @@ export const useAssemblyAITranscription = (meetingId: string) => {
     }
   }, [user]);
 
-<<<<<<< HEAD
-  // Setup audio capture to include all participants (tab/system audio preferred, otherwise mix remote tracks)
-  const setupAudioCapture = useCallback(async () => {
-    console.log('🎤 Setting up audio capture...');
-    
-    // Try to capture system/tab audio to include all participants (best quality & simplest)
-    // Many browsers require this to be triggered by a user gesture.
-    let audioStream: MediaStream | null = null;
-    try {
-      // Prefer current tab audio with echo cancellation off for cleaner diarization
-      const displayConstraints: any = {
-        video: false,
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-          suppressLocalAudioPlayback: true,
-        },
-        preferCurrentTab: true,
-      };
-      audioStream = await (navigator.mediaDevices as any).getDisplayMedia(displayConstraints);
-      // Ensure at least one audio track
-      if (!audioStream || !audioStream.getAudioTracks().length) {
-        throw new Error('No audio track in displayMedia stream');
-      }
-      console.log('🎵 Got system/tab audio stream (includes all participants)');
-    } catch (e) {
-      console.warn('⚠️ Could not get system/tab audio, attempting to mix remote participant tracks:', e);
-      try {
-        // Create an AudioContext mix and add: local mic + remote participant audio tracks (if available)
-        const tempContext = new AudioContext({ sampleRate: 16000 });
-        const destination = tempContext.createMediaStreamDestination();
-
-        // 1) Try to add remote participant tracks from Stream SDK
-        try {
-          const remoteParticipants = participants.filter(p => p.userId !== localParticipant?.userId);
-          for (const p of remoteParticipants) {
-            // Stream SDK exposes audio stream on participant?.audioStream (implementation-dependent)
-            // Try known fields; if not available, skip silently.
-            const anyParticipant: any = p as any;
-            const mediaStream: MediaStream | null = anyParticipant.audioStream || anyParticipant.mediaStream || null;
-            if (mediaStream) {
-              const remoteTracks = mediaStream.getAudioTracks();
-              if (remoteTracks.length) {
-                const remoteStream = new MediaStream([remoteTracks[0]]);
-                const remoteSource = tempContext.createMediaStreamSource(remoteStream);
-                const gain = tempContext.createGain();
-                gain.gain.value = 1.0;
-                remoteSource.connect(gain).connect(destination);
-              }
-            }
-          }
-        } catch (mixErr) {
-          console.warn('⚠️ Unable to auto-detect remote participant tracks:', mixErr);
-        }
-
-        // 2) Add local microphone as fallback so we at least capture the speaker
-        try {
-          const mic = await navigator.mediaDevices.getUserMedia({
-            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
-            video: false,
-          });
-          if (mic.getAudioTracks().length) {
-            const micSource = tempContext.createMediaStreamSource(mic);
-            const gain = tempContext.createGain();
-            gain.gain.value = 1.0;
-            micSource.connect(gain).connect(destination);
-          }
-        } catch (_) {}
-
-        // If we ended up with at least one node connected, use the mixed stream
-        if (destination.stream.getAudioTracks().length) {
-          audioStream = destination.stream;
-          // Keep tempContext alive by storing it until full setup completes
-          audioContextRef.current = tempContext;
-          console.log('🎚️ Using mixed audio stream (remote + local if available)');
-        } else {
-          // Final fallback: just mic
-          audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-          console.log('🎤 Fallback to local microphone only');
-          // Close temporary context if unused
-          try { tempContext.close(); } catch {}
-        }
-      } catch (mixAllErr) {
-        console.error('❌ Mixing attempt failed, falling back to microphone:', mixAllErr);
-        audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        console.log('🎤 Fallback to local microphone only');
-      }
-    }
-    
-    if (!audioStream) {
-      throw new Error('No audio stream available for transcription');
-    }
-    
-    streamRef.current = audioStream;
-
-    // Route audio through AudioWorklet to get raw PCM 16k mono frames
-    // Reuse any pre-created context (when mixing) to avoid disconnects
-    const audioContext = audioContextRef.current || new AudioContext({ sampleRate: 16000 });
-=======
-  // Helper: attach a MediaStream to graph, dedup by track id
   const attachStreamToGraph = useCallback((stream: MediaStream, label: string) => {
     if (!audioContextRef.current || !mixBusRef.current) return;
     const tracks = stream.getAudioTracks();
@@ -218,17 +93,13 @@ export const useAssemblyAITranscription = (meetingId: string) => {
     });
   }, []);
 
-  // Scan DOM for Stream Video SDK media elements and attach their audio
   const scanAndAttachRemoteAudio = useCallback(() => {
     try {
-      // Stream Video SDK mounts media inside elements with class containing 'str-video'
       const container = document.querySelector('[class*="str-video"]') || document.body;
       const mediaEls = Array.from(container.querySelectorAll('video, audio')) as (HTMLVideoElement | HTMLAudioElement)[];
       mediaEls.forEach((el, idx) => {
-        // Skip elements without audio
         let mediaStream: MediaStream | null = null;
         try {
-          // captureStream works for <video> and many <audio> in Chromium
           const anyEl: any = el as any;
           if (typeof anyEl.captureStream === 'function') {
             mediaStream = anyEl.captureStream();
@@ -242,31 +113,25 @@ export const useAssemblyAITranscription = (meetingId: string) => {
     }
   }, [attachStreamToGraph]);
 
-  // Setup audio capture by mixing mic + remote elements (no screen share)
   const setupAudioCapture = useCallback(async () => {
     console.log('🎤 Setting up audio capture...');
-    // Create the audio graph
     const audioContext = new AudioContext({ sampleRate: 16000 });
->>>>>>> origin/feature/speaker-attribution
     audioContextRef.current = audioContext;
 
     await audioContext.audioWorklet.addModule('/audio-processor.js');
     const workletNode = new AudioWorkletNode(audioContext, 'audio-processor');
     audioWorkletNodeRef.current = workletNode;
 
-    // Mix bus collects all sources (mic + remotes)
     const mixBus = audioContext.createGain();
     mixBus.gain.value = 1.0;
     mixBusRef.current = mixBus;
     mixBus.connect(workletNode);
 
-    // Mute output but keep graph running
     const sink = audioContext.createGain();
     sink.gain.value = 0;
     workletNode.connect(sink);
     sink.connect(audioContext.destination);
 
-    // 1) Attach local microphone (so your voice is included)
     try {
       const mic = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       streamRef.current = mic;
@@ -278,9 +143,7 @@ export const useAssemblyAITranscription = (meetingId: string) => {
       console.warn('Mic not available:', micErr);
     }
 
-    // 2) Attach remote participant audio by capturing SDK-rendered media elements
     scanAndAttachRemoteAudio();
-    // Re-scan periodically to catch joins/leaves
     if (rescanTimerRef.current) clearInterval(rescanTimerRef.current);
     rescanTimerRef.current = setInterval(scanAndAttachRemoteAudio, 1500);
 
@@ -290,74 +153,51 @@ export const useAssemblyAITranscription = (meetingId: string) => {
       console.warn('Could not resume audio context:', error);
     }
     console.log('✅ Audio mixing setup complete');
-  }, []);
+  }, [scanAndAttachRemoteAudio]);
 
-  // Start transcription
   const startTranscription = useCallback(async () => {
     if (!user || !meetingId) return;
 
-    // Force cleanup any existing connections first
     console.log('🧹 Cleaning up any existing connections...');
     stopTranscription();
-    
-    // Small delay to ensure cleanup is complete
     await new Promise(resolve => setTimeout(resolve, 500));
 
     try {
       setIsTranscribing(true);
       setError(null);
       
-      // Get all participants with proper display names
+      // Start insights processing
+      startInsightsProcessing();
+      
       const getAllParticipants = () => {
-        const allParticipants = [];
-        
-        // Add local participant
+        const allParticipants = [] as Array<{ id: string; name: string; role: string; isHost: boolean }>;
         if (localParticipant) {
-          const localName = localParticipant.name || 
-                           localParticipant.userId?.split('@')[0] || 
-                           'Host';
-          allParticipants.push({
-            id: localParticipant.userId,
-            name: localName,
-            role: 'Host',
-            isHost: true
-          });
+          const localName = localParticipant.name || localParticipant.userId?.split('@')[0] || 'Host';
+          allParticipants.push({ id: localParticipant.userId, name: localName, role: 'Host', isHost: true });
         }
-        
-        // Add remote participants
         participants.forEach(participant => {
           if (participant.userId !== localParticipant?.userId) {
-            const participantName = participant.name || 
-                                  participant.userId?.split('@')[0] || 
-                                  `Participant ${participant.userId}`;
-            allParticipants.push({
-              id: participant.userId,
-              name: participantName,
-              role: 'Participant',
-              isHost: false
-            });
+            const participantName = participant.name || participant.userId?.split('@')[0] || `Participant ${participant.userId}`;
+            allParticipants.push({ id: participant.userId, name: participantName, role: 'Participant', isHost: false });
           }
         });
-        
         return allParticipants;
       };
 
       const allParticipants = getAllParticipants();
       const participantNames = allParticipants.map(p => p.name);
 
-      // Start local transcript storage session with enhanced details
       localTranscriptStorageClient.startMeeting(meetingId, {
         title: `Meeting ${meetingId}`,
         startTime: new Date(),
         participants: participantNames,
-        industry: 'manufacturing', // Can be made configurable
+        industry: 'manufacturing',
         meetingType: 'sales',
         attendees: allParticipants,
         language: 'English',
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
       });
 
-      // Setup audio capture
       try {
         await setupAudioCapture();
         console.log('🎤 Audio capture setup complete');
@@ -366,26 +206,19 @@ export const useAssemblyAITranscription = (meetingId: string) => {
         throw error;
       }
 
-      // Get AssemblyAI token (no-cache to avoid stale tokens)
       const response = await fetch('/api/assemblyai-token', { cache: 'no-store' });
       const data = await response.json();
-      
       if (data.error || !data.token) {
         console.error('AssemblyAI token error:', data.error);
         throw new Error('Failed to get AssemblyAI token');
       }
-
-      // Debug: log masked token info (length only, not the token)
       try { console.log('🔑 Retrieved AssemblyAI token length:', data.token.length); } catch (_) {}
 
-      // Connect to AssemblyAI Universal Streaming WebSocket (v3) - using direct connection
       const endpoint = `wss://streaming.assemblyai.com/v3/ws?sample_rate=16000&formatted_finals=true&format_turns=true&speaker_labels=true&enable_speaker_diarization=true&token=${data.token}`;
       console.log('🔗 Connecting to AssemblyAI:', endpoint.substring(0, 50) + '...');
-      
       const ws = new WebSocket(endpoint);
       wsRef.current = ws;
 
-      // Connection timeout
       const connectionTimeout = setTimeout(() => {
         if (ws.readyState !== WebSocket.OPEN) {
           console.error('❌ WebSocket connection timeout');
@@ -393,20 +226,18 @@ export const useAssemblyAITranscription = (meetingId: string) => {
           setError('Connection timeout. Please try again.');
           setIsTranscribing(false);
         }
-      }, 10000); // 10 second timeout
+      }, 10000);
 
-      const turns: Record<number, string> = {}; // keyed by turn_order
+      const turns: Record<number, string> = {};
 
       ws.onopen = () => {
         console.log('🔓 AssemblyAI WebSocket connected!');
-        clearTimeout(connectionTimeout); // Clear connection timeout
+        clearTimeout(connectionTimeout);
 
-        // Setup audio streaming to WebSocket
         if (audioWorkletNodeRef.current) {
           audioWorkletNodeRef.current.port.onmessage = (event) => {
             try {
               if (ws.readyState === WebSocket.OPEN) {
-                // Send the audio buffer as Uint8Array (correct format for AssemblyAI)
                 const audioBuffer = event.data.audio_data;
                 const uint8Array = new Uint8Array(audioBuffer);
                 ws.send(uint8Array);
@@ -416,14 +247,7 @@ export const useAssemblyAITranscription = (meetingId: string) => {
             }
           };
         }
-        
-<<<<<<< HEAD
-        // Start speaker detection timer (check frequently for better attribution)
-        speakerDetectionTimerRef.current = setInterval(() => {
-          detectCurrentSpeaker();
-        }, 200);
-=======
-        // Start speaker detection timer: sample Stream SDK's isSpeaking and build a small history buffer
+
         const sampleIntervalMs = 200;
         speakerDetectionTimerRef.current = setInterval(() => {
           detectCurrentSpeaker();
@@ -436,14 +260,12 @@ export const useAssemblyAITranscription = (meetingId: string) => {
               actives.push(local.userId);
             }
             speakingHistoryRef.current.push({ ts: Date.now(), active: actives });
-            // Keep last 30s
             const cutoff = Date.now() - 30000;
             while (speakingHistoryRef.current.length > 0 && speakingHistoryRef.current[0].ts < cutoff) {
               speakingHistoryRef.current.shift();
             }
           } catch {}
         }, sampleIntervalMs);
->>>>>>> origin/feature/speaker-attribution
       };
 
       ws.onmessage = (event) => {
@@ -453,17 +275,11 @@ export const useAssemblyAITranscription = (meetingId: string) => {
 
           if (msg.type === 'Turn') {
             const { turn_order, transcript, end_of_turn_confidence } = msg;
-            // Robust speaker label extraction across possible keys
             const speakerLabelRaw = (msg.speaker ?? msg.turn_speaker ?? msg.channel ?? msg.spk ?? '').toString();
             const speakerLabel = speakerLabelRaw || '';
             
             if (transcript && transcript.trim()) {
               turns[turn_order] = transcript;
-
-              const orderedTurns = Object.keys(turns)
-                .sort((a, b) => Number(a) - Number(b))
-                .map((k) => turns[Number(k)])
-                .join(' ');
 
               const result: TranscriptionResult = {
                 text: transcript,
@@ -473,76 +289,11 @@ export const useAssemblyAITranscription = (meetingId: string) => {
                 isFinal: true,
               };
 
-<<<<<<< HEAD
-              // Determine speaker attribution using recent Stream speaking state and AssemblyAI diarization label
-              let attributed: { id: string; name: string } | null = null;
-
-              const nowTs = Date.now();
-              const recentWindowMs = 1500;
-
-              // 1) Prefer a remote participant who spoke very recently
-              const recentRemote = participants
-                .filter(p => p.userId !== localParticipant?.userId)
-                .map(p => ({ p, ts: recentSpeakingAtRef.current[p.userId] || 0 }))
-                .filter(({ ts }) => nowTs - ts <= recentWindowMs)
-                .sort((a, b) => b.ts - a.ts);
-
-              if (recentRemote.length > 0) {
-                const sel = recentRemote[0].p;
-                attributed = {
-                  id: sel.userId,
-                  name: sel.name || sel.userId?.split('@')[0] || 'Participant',
-                };
-              }
-
-              // 2) If AssemblyAI provided a diarized speaker label, try to bind that label to the most recent remote speaker
-              if (speaker) {
-                const label = String(speaker);
-                if (!attributed && speakerLabelMapRef.current[label]) {
-                  attributed = speakerLabelMapRef.current[label];
-                } else if (attributed) {
-                  // Bind this label to the chosen participant for future turns
-                  speakerLabelMapRef.current[label] = attributed;
-                }
-              }
-
-              // Fallbacks if we could not attribute via diarization mapping
-              if (!attributed) {
-                // Prefer an actively speaking remote participant
-                const remoteSpeaking = participants.find(p => p.isSpeaking && p.userId !== localParticipant?.userId);
-                if (remoteSpeaking) {
-                  attributed = {
-                    id: remoteSpeaking.userId,
-                    name: remoteSpeaking.name || remoteSpeaking.userId?.split('@')[0] || 'Participant',
-                  };
-                }
-              }
-
-              if (!attributed && lastSpeakingParticipantRef.current && lastSpeakingParticipantRef.current.id !== localParticipant?.userId) {
-                attributed = lastSpeakingParticipantRef.current;
-              }
-
-              if (!attributed) {
-                // Final fallback: detected current speaker or local participant
-                const cur = currentSpeakerRef.current || {
-                  id: localParticipant?.userId || user?.id || 'user-1',
-                  name: localParticipant?.name || user?.fullName || 'Speaker',
-                };
-                attributed = cur;
-              }
-
-              const speakerId = attributed.id;
-              const speakerName = attributed.name;
-=======
-              // Resolve speaker using diarization + speaking history
               let resolved: { id: string; name: string } | null = null;
               if (speakerLabel) {
                 resolved = diarizationMapRef.current.get(speakerLabel) || null;
               }
-
-              // If still unknown, infer from speaking history over the turn time window
               if (!resolved) {
-                // Estimate time window from words if available; else last 2s
                 let startTs = Date.now() - 2000;
                 let endTs = Date.now();
                 try {
@@ -551,9 +302,8 @@ export const useAssemblyAITranscription = (meetingId: string) => {
                     const first = words.find(w => typeof w.start === 'number');
                     const last = [...words].reverse().find(w => typeof w.end === 'number');
                     if (first?.start != null && last?.end != null) {
-                      // AssemblyAI times are usually in ms
                       const now = Date.now();
-                      endTs = now; // keep relative to now
+                      endTs = now;
                       startTs = now - Math.max(500, Math.min(5000, (last.end - first.start)));
                     }
                   }
@@ -567,7 +317,6 @@ export const useAssemblyAITranscription = (meetingId: string) => {
                 counts.forEach((c, id) => { if (c > topCount) { topCount = c; topId = id; } });
 
                 if (topId) {
-                  // Resolve name by matching participants/local
                   const parts = participantsRef.current || [];
                   const local = localParticipantRef.current;
                   let name = parts.find(p => p.userId === topId)?.name || '';
@@ -583,7 +332,6 @@ export const useAssemblyAITranscription = (meetingId: string) => {
                 }
               }
               if (!resolved) {
-                // Fallback to current speaker or anonymous label
                 const cur = currentSpeakerRef.current || {
                   id: (localParticipantRef.current?.userId) || user?.id || 'user-1',
                   name: (localParticipantRef.current?.name) || user?.fullName || (speakerLabel ? `Speaker ${speakerLabel}` : 'Speaker'),
@@ -592,7 +340,6 @@ export const useAssemblyAITranscription = (meetingId: string) => {
               }
               const speakerId = resolved.id;
               const speakerName = resolved.name;
->>>>>>> origin/feature/speaker-attribution
 
               const transcriptWithSpeaker = {
                 ...result,
@@ -602,10 +349,17 @@ export const useAssemblyAITranscription = (meetingId: string) => {
               };
               
               localTranscriptStorageClient.addTranscript(transcriptWithSpeaker);
-              
-              // Only show final transcripts in UI (less restrictive)
               if (result.isFinal && result.text.trim().length > 0) {
                 setTranscripts(prev => [...prev, transcriptWithSpeaker]);
+                
+                // Add transcript chunk for insights processing
+                addTranscriptChunk({
+                  text: result.text,
+                  speakerId: speakerId,
+                  speakerName: speakerName,
+                  timestamp: new Date(),
+                  meetingId: meetingId,
+                });
               }
               
               console.log('✅ Transcript received:', { 
@@ -626,7 +380,7 @@ export const useAssemblyAITranscription = (meetingId: string) => {
       };
 
       ws.onclose = (ev) => {
-        clearTimeout(connectionTimeout); // Clear connection timeout
+        clearTimeout(connectionTimeout);
         try {
           const code = (ev as any)?.code ?? 'unknown';
           const reason = (ev as any)?.reason ?? '';
@@ -645,15 +399,12 @@ export const useAssemblyAITranscription = (meetingId: string) => {
     }
   }, [user, meetingId, setupAudioCapture]);
 
-  // Stop transcription
   const stopTranscription = useCallback(() => {
     console.log('🛑 Stopping transcription...');
     if (rescanTimerRef.current) {
       clearInterval(rescanTimerRef.current);
       rescanTimerRef.current = null;
     }
-    
-    // Close WebSocket connection
     if (wsRef.current) {
       try {
         wsRef.current.send(JSON.stringify({ type: 'Terminate' }));
@@ -663,8 +414,6 @@ export const useAssemblyAITranscription = (meetingId: string) => {
       }
       wsRef.current = null;
     }
-
-    // Clean up audio worklet
     if (audioWorkletNodeRef.current) {
       try {
         audioWorkletNodeRef.current.disconnect();
@@ -673,8 +422,6 @@ export const useAssemblyAITranscription = (meetingId: string) => {
       }
       audioWorkletNodeRef.current = null;
     }
-
-    // Close audio context
     if (audioContextRef.current) {
       try {
         audioContextRef.current.close();
@@ -683,8 +430,6 @@ export const useAssemblyAITranscription = (meetingId: string) => {
       }
       audioContextRef.current = null;
     }
-
-    // Stop all audio tracks
     if (streamRef.current) {
       try {
         streamRef.current.getTracks().forEach(track => {
@@ -696,8 +441,6 @@ export const useAssemblyAITranscription = (meetingId: string) => {
       }
       streamRef.current = null;
     }
-
-    // Disconnect audio source
     if (sourceRef.current) {
       try {
         sourceRef.current.disconnect();
@@ -706,84 +449,54 @@ export const useAssemblyAITranscription = (meetingId: string) => {
       }
       sourceRef.current = null;
     }
-
-    // Disconnect remote sources
     if (remoteSourcesRef.current.size > 0) {
       remoteSourcesRef.current.forEach((src) => {
         try { src.disconnect(); } catch {}
       });
       remoteSourcesRef.current.clear();
     }
-
     if (mixBusRef.current) {
       try { mixBusRef.current.disconnect(); } catch {}
       mixBusRef.current = null;
     }
-
-    // Clear speaker detection timer
     if (speakerDetectionTimerRef.current) {
       clearInterval(speakerDetectionTimerRef.current);
       speakerDetectionTimerRef.current = null;
     }
-
-    // Save transcript to local file
     const savedPath = localTranscriptStorageClient.endMeeting();
     if (savedPath) {
       setSavedTranscriptPath(savedPath);
       console.log('💾 Transcript saved to:', savedPath);
     }
-
+    
+    // Stop insights processing
+    stopInsightsProcessing();
+    
     setIsTranscribing(false);
     console.log('✅ Transcription stopped and cleaned up');
   }, []);
 
-  // Clear transcripts
   const clearTranscripts = useCallback(() => {
     console.log('🧹 Clearing transcripts and resetting...');
-    
-    // Force cleanup any existing connections
     stopTranscription();
-    
     setTranscripts([]);
     setSavedTranscriptPath(null);
-    
-    // Get all participants for reset
     const getAllParticipants = () => {
-      const allParticipants = [];
-      
+      const allParticipants = [] as Array<{ id: string; name: string; role: string; isHost: boolean }>;
       if (localParticipant) {
-        const localName = localParticipant.name || 
-                         localParticipant.userId?.split('@')[0] || 
-                         'Host';
-        allParticipants.push({
-          id: localParticipant.userId,
-          name: localName,
-          role: 'Host',
-          isHost: true
-        });
+        const localName = localParticipant.name || localParticipant.userId?.split('@')[0] || 'Host';
+        allParticipants.push({ id: localParticipant.userId, name: localName, role: 'Host', isHost: true });
       }
-      
       participants.forEach(participant => {
         if (participant.userId !== localParticipant?.userId) {
-          const participantName = participant.name || 
-                                participant.userId?.split('@')[0] || 
-                                `Participant ${participant.userId}`;
-          allParticipants.push({
-            id: participant.userId,
-            name: participantName,
-            role: 'Participant',
-            isHost: false
-          });
+          const participantName = participant.name || participant.userId?.split('@')[0] || `Participant ${participant.userId}`;
+          allParticipants.push({ id: participant.userId, name: participantName, role: 'Participant', isHost: false });
         }
       });
-      
       return allParticipants;
     };
-
     const allParticipants = getAllParticipants();
     const participantNames = allParticipants.map(p => p.name);
-    
-    // Reset local storage session
     localTranscriptStorageClient.startMeeting(meetingId, {
       title: `Meeting ${meetingId}`,
       startTime: new Date(),
@@ -796,7 +509,6 @@ export const useAssemblyAITranscription = (meetingId: string) => {
     });
   }, [meetingId, localParticipant, participants]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       stopTranscription();
@@ -814,3 +526,6 @@ export const useAssemblyAITranscription = (meetingId: string) => {
     clearTranscripts,
   };
 };
+
+
+
