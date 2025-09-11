@@ -28,7 +28,11 @@ import { cn } from '@/lib/utils';
   
 type CallLayoutType = 'grid' | 'speaker-left' | 'speaker-right';
 
-const MeetingRoom = () => {
+interface MeetingRoomProps {
+  callId: string;
+}
+
+const MeetingRoom = ({ callId }: MeetingRoomProps) => {
   const searchParams = useSearchParams();
   const isPersonalRoom = !!searchParams.get('personal');
   const router = useRouter();
@@ -129,7 +133,7 @@ const MeetingRoom = () => {
 
       {/* Insights Panel */}
       <InsightsPanel 
-        meetingId={searchParams.get('id') || 'default-meeting'}
+        meetingId={callId}
         isVisible={showInsights}
         onToggle={() => setShowInsights(!showInsights)}
       />

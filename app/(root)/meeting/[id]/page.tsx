@@ -40,7 +40,7 @@ const MeetingPage = () => {
           <MeetingSetup setIsSetupComplete={setIsSetupComplete} />
         ) : (
           <div className="flex flex-col gap-4 p-4">
-            <MeetingRoom />
+            <MeetingRoom callId={call.id} />
             <div className="bg-gray-50 rounded p-3">
               <h2 className="text-lg font-semibold mb-2">Glossary Lookup</h2>
               <GlossaryLookup />

@@ -5,7 +5,6 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AlertCircle, CheckCircle, Clock, AlertTriangle, MessageSquare, Target, HelpCircle } from 'lucide-react';
-import io, { Socket } from 'socket.io-client';
 
 interface Insight {
   _id: string;
@@ -54,7 +53,6 @@ export default function InsightsPanel({ meetingId, isVisible, onToggle }: Insigh
   const [insights, setInsights] = useState<Insight[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [socket, setSocket] = useState<Socket | null>(null);
 
   const fetchInsights = async () => {
     if (!meetingId) return;
@@ -63,14 +61,23 @@ export default function InsightsPanel({ meetingId, isVisible, onToggle }: Insigh
     setError(null);
     
     try {
+      console.log('Fetching insights for meetingId:', meetingId);
       const response = await fetch(`/api/insights?meetingId=${meetingId}`);
       if (!response.ok) {
         throw new Error('Failed to fetch insights');
       }
       
       const data = await response.json();
-      setInsights(data.insights || []);
+      console.log('Fetched insights:', data.insights);
+      // Sort insights by timestamp (newest first)
+      const sortedInsights = (data.insights || []).sort((a: Insight, b: Insight) => {
+        const timeA = new Date(a.timestamp).getTime();
+        const timeB = new Date(b.timestamp).getTime();
+        return timeB - timeA;
+      });
+      setInsights(sortedInsights);
     } catch (err) {
+      console.error('Error fetching insights:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch insights');
     } finally {
       setLoading(false);
@@ -80,40 +87,25 @@ export default function InsightsPanel({ meetingId, isVisible, onToggle }: Insigh
   useEffect(() => {
     fetchInsights();
     
-    // Setup WebSocket connection for real-time updates
-    const newSocket = io(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000');
-    setSocket(newSocket);
-
-    newSocket.on('connect', () => {
-      console.log('Connected to insights WebSocket');
-      newSocket.emit('join-meeting', meetingId);
-    });
-
-    newSocket.on('insights', (data: { meetingId: string; insights: Insight[] }) => {
-      if (data.meetingId === meetingId) {
-        setInsights(prev => [...data.insights, ...prev]);
-      }
-    });
-
-    newSocket.on('disconnect', () => {
-      console.log('Disconnected from insights WebSocket');
-    });
-
-    // Fallback polling every 30 seconds
-    const interval = setInterval(fetchInsights, 30000);
+    // Poll for new insights every 10 seconds
+    const interval = setInterval(fetchInsights, 10000);
     
     return () => {
       clearInterval(interval);
-      newSocket.disconnect();
     };
   }, [meetingId]);
 
   const formatTime = (ts: string | undefined, createdAt?: string) => {
-    const raw = ts || createdAt || new Date().toISOString();
-    return new Date(raw).toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    try {
+      const raw = ts || createdAt || new Date().toISOString();
+      return new Date(raw).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch (error) {
+      console.error('Error formatting time:', error);
+      return 'Invalid time';
+    }
   };
 
   const getCategoryIcon = (category: string) => {
@@ -155,7 +147,7 @@ export default function InsightsPanel({ meetingId, isVisible, onToggle }: Insigh
           </button>
         </div>
         <p className="text-sm text-gray-600 mt-1">
-          Real-time meeting insights and key moments
+          Real-time meeting insights and key moments ({insights.length} found)
         </p>
       </div>
 
@@ -213,7 +205,7 @@ export default function InsightsPanel({ meetingId, isVisible, onToggle }: Insigh
                       </div>
                       <div className="flex items-center space-x-1 text-xs text-gray-500">
                         <Clock className="w-3 h-3" />
-                        <span>{formatTime(insight.timestamp as any, (insight as any).createdAt)}</span>
+                        <span>{formatTime(insight.timestamp, (insight as any).createdAt)}</span>
                       </div>
                     </div>
 
@@ -263,9 +255,10 @@ export default function InsightsPanel({ meetingId, isVisible, onToggle }: Insigh
           <span>{insights.length} insights</span>
           <button
             onClick={fetchInsights}
-            className="text-blue-600 hover:text-blue-800 transition-colors"
+            className="text-blue-600 hover:text-blue-800 transition-colors disabled:opacity-50"
+            disabled={loading}
           >
-            Refresh
+            {loading ? 'Refreshing...' : 'Refresh'}
           </button>
         </div>
       </div>
