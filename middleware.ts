@@ -1,5 +1,10 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 
+const isPublicRoute = createRouteMatcher([
+  '/sign-in(.*)',
+  '/sign-up(.*)',
+]);
+
 const protectedRoute = createRouteMatcher([
   '/',
   '/upcoming',
@@ -9,10 +14,17 @@ const protectedRoute = createRouteMatcher([
   '/personal-room',
 ]);
 
-export default clerkMiddleware((auth, req) => {
-  if (protectedRoute(req)) auth().protect();
+export default clerkMiddleware(async (auth, req) => {
+  if (!isPublicRoute(req) && protectedRoute(req)) {
+    await auth().protect();
+  }
 });
 
 export const config = {
-  matcher: ['/((?!.+\\.[\\w]+$|_next).*)', '/', '/(api|trpc)(.*)'],
+  matcher: [
+    // Skip Next.js internals and all static files
+    '/((?!.+\\.[\\w]+$|_next).*)',
+    // Always run for API routes
+    '/(api|trpc)(.*)',
+  ],
 };

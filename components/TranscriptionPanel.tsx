@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Mic, MicOff, Trash2, FileText, Download } from 'lucide-react';
-import { useAssemblyAITranscription } from '@/hooks/useAssemblyAITranscription';
+import { useDeepgramTranscription } from '@/hooks/useDeepgramTranscription';
 import { useParams } from 'next/navigation';
 import localTranscriptStorageClient from '@/lib/localTranscriptStorageClient';
 
@@ -14,7 +14,7 @@ interface TranscriptionPanelProps {
 const TranscriptionPanel = ({ isOpen, onToggle }: TranscriptionPanelProps) => {
   const { id } = useParams();
   const meetingId = Array.isArray(id) ? id[0] : id;
-  const { transcripts, isTranscribing, startTranscription, stopTranscription, clearTranscripts, error, savedTranscriptPath, setSavedTranscriptPath } = useAssemblyAITranscription(meetingId || '');
+  const { transcripts, isTranscribing, startTranscription, stopTranscription, clearTranscripts, error, savedTranscriptPath, setSavedTranscriptPath } = useDeepgramTranscription(meetingId || '');
   const [autoScroll, setAutoScroll] = useState(true);
 
   const formatTime = (timestamp: Date) => {
@@ -104,9 +104,15 @@ const TranscriptionPanel = ({ isOpen, onToggle }: TranscriptionPanelProps) => {
         {/* Status */}
         <div className="mb-4">
           {isTranscribing && (
-            <div className="flex items-center gap-2 text-green-400">
-              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-              Recording... Speak clearly for best results.
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-green-400">
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                Recording... Capturing all participants' audio.
+                <span className="text-xs text-gray-400 ml-2">(Deepgram - Speaker Diarization)</span>
+              </div>
+              <div className="text-xs text-blue-300 bg-blue-900/20 p-2 rounded border border-blue-600">
+                ✅ <strong>Multi-speaker support:</strong> Captures audio from all participants (local mic + remote audio) and automatically identifies who is speaking.
+              </div>
             </div>
           )}
           {error && (
