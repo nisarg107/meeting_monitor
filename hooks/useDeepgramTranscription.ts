@@ -441,6 +441,10 @@ export const useDeepgramTranscription = (meetingId: string) => {
       }
 
       // Initialize Deepgram service
+      if (!deepgramApiKey) {
+        throw new Error('Deepgram API key is required but not found');
+      }
+      
       console.log('🔧 Deepgram: Initializing service with API key...');
       const deepgramService = new DeepgramTranscriptionService(deepgramApiKey);
       serviceRef.current = deepgramService;

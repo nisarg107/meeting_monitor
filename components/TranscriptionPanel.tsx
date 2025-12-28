@@ -107,7 +107,7 @@ const TranscriptionPanel = ({ isOpen, onToggle }: TranscriptionPanelProps) => {
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-green-400">
                 <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                Recording... Capturing all participants' audio.
+                Recording... Capturing all participants&apos; audio.
                 <span className="text-xs text-gray-400 ml-2">(Deepgram - Speaker Diarization)</span>
               </div>
               <div className="text-xs text-blue-300 bg-blue-900/20 p-2 rounded border border-blue-600">
