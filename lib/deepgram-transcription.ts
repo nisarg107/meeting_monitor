@@ -103,6 +103,9 @@ export class DeepgramTranscriptionService {
                   timestamp: new Date(start),
                 };
 
+                // Attach words array to result for speaker mapping (same as AssemblyAI)
+                (result as any).words = words;
+
                 onTranscript(result);
               } else {
                 console.log('⚠️ Deepgram: Empty transcript, skipping');

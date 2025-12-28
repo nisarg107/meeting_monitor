@@ -26,12 +26,14 @@ export const useDeepgramTranscription = (meetingId: string) => {
   const remoteSourcesRef = useRef<Map<string, MediaStreamAudioSourceNode>>(new Map());
   const rescanTimerRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Speaker mapping: Deepgram speaker labels -> participant info
+  // Speaker mapping: Deepgram speaker labels -> participant info (same as AssemblyAI)
   const speakerMapRef = useRef<Map<number, { id: string; name: string }>>(new Map());
   const participantsRef = useRef(participants);
   const localParticipantRef = useRef(localParticipant);
   const speakerDetectionTimerRef = useRef<NodeJS.Timeout | null>(null);
-  type SpeakingSample = { ts: number; speakerId: string; speakerName: string };
+  const currentSpeakerRef = useRef<{ id: string; name: string } | null>(null);
+  // Use same format as AssemblyAI: track active speaker IDs at each timestamp
+  type SpeakingSample = { ts: number; active: string[] };
   const speakingHistoryRef = useRef<SpeakingSample[]>([]);
 
   useEffect(() => { 
@@ -42,187 +44,110 @@ export const useDeepgramTranscription = (meetingId: string) => {
     localParticipantRef.current = localParticipant; 
   }, [localParticipant]);
 
-  // Detect current speaker continuously - with better logging
-  const detectCurrentSpeaker = useCallback((): { id: string; name: string } => {
+  // Detect current speaker using Stream participant state (same as AssemblyAI)
+  const detectCurrentSpeaker = useCallback(() => {
     const parts = participantsRef.current || [];
     const local = localParticipantRef.current;
-    const now = Date.now();
-    
-    // Priority: remote participants speaking > local participant speaking
     const speakingParticipants = parts.filter(p => p.isSpeaking);
     
-    let detectedSpeaker: { id: string; name: string };
-    
     if (speakingParticipants.length > 0) {
-      // Remote participant is speaking - get the first one
-      const speaker = speakingParticipants[0];
-      detectedSpeaker = {
-        id: speaker.userId,
-        name: speaker.name || speaker.userId?.split('@')[0] || `User ${speaker.userId}`
+      const currentSpeaker = speakingParticipants[0];
+      currentSpeakerRef.current = {
+        id: currentSpeaker.userId,
+        name: currentSpeaker.name || currentSpeaker.userId?.split('@')[0] || 'Speaker'
       };
-      // Log occasionally to verify it's working
-      if (Math.random() < 0.1) {
-        console.log(`🎤 Detected remote speaker: ${detectedSpeaker.name} (${detectedSpeaker.id})`);
-      }
     } else if (local?.isSpeaking) {
-      // Local participant is speaking
-      detectedSpeaker = {
+      currentSpeakerRef.current = {
         id: local.userId,
-        name: local.name || local.userId?.split('@')[0] || 'You'
+        name: local.name || local.userId?.split('@')[0] || 'Speaker'
       };
-      // Log occasionally
-      if (Math.random() < 0.1) {
-        console.log(`🎤 Detected local speaker: ${detectedSpeaker.name} (${detectedSpeaker.id})`);
-      }
     } else {
-      // No one is currently speaking - use last known speaker from history
-      if (speakingHistoryRef.current.length > 0) {
-        const lastSpeaker = speakingHistoryRef.current[speakingHistoryRef.current.length - 1];
-        const timeSinceLastSpeaker = now - lastSpeaker.ts;
-        if (timeSinceLastSpeaker < 5000) { // Within last 5 seconds
-          detectedSpeaker = {
-            id: lastSpeaker.speakerId,
-            name: lastSpeaker.speakerName
-          };
-        } else {
-          // Too long ago - don't assume, but we'll still use it as fallback
-          detectedSpeaker = {
-            id: lastSpeaker.speakerId,
-            name: lastSpeaker.speakerName
-          };
-        }
-      } else {
-        // No history - fallback to local participant (but this should be rare)
-        detectedSpeaker = {
-          id: local?.userId || user?.id || 'user-1',
-          name: local?.name || user?.fullName || 'Speaker'
-        };
-      }
+      // Fallback to local participant
+      currentSpeakerRef.current = {
+        id: local?.userId || user?.id || 'user-1',
+        name: local?.name || user?.fullName || 'Speaker'
+      };
     }
-    
-    // Add to speaking history (only if different from last entry to avoid duplicates)
-    const lastEntry = speakingHistoryRef.current[speakingHistoryRef.current.length - 1];
-    if (!lastEntry || lastEntry.speakerId !== detectedSpeaker.id || (now - lastEntry.ts) > 500) {
-      speakingHistoryRef.current.push({
-        ts: now,
-        speakerId: detectedSpeaker.id,
-        speakerName: detectedSpeaker.name
-      });
-    }
-    
-    // Keep last 20 seconds of history (increased for better accuracy)
-    const cutoff = now - 20000;
-    speakingHistoryRef.current = speakingHistoryRef.current.filter(s => s.ts > cutoff);
-    
-    return detectedSpeaker;
   }, [user]);
 
-  // Get speaker at a specific timestamp
-  const getSpeakerAtTime = useCallback((timestamp: number): { id: string; name: string } => {
-    const history = speakingHistoryRef.current;
-    if (history.length === 0) {
-      return detectCurrentSpeaker();
-    }
-    
-    // Find the sample closest to the timestamp (within 2 seconds)
-    const timeWindow = 2000;
-    const relevantSamples = history.filter(s => Math.abs(s.ts - timestamp) < timeWindow);
-    
-    if (relevantSamples.length > 0) {
-      // Get the most recent sample before or at the timestamp
-      const closest = relevantSamples.reduce((prev, curr) => 
-        Math.abs(curr.ts - timestamp) < Math.abs(prev.ts - timestamp) ? curr : prev
-      );
-      
-      return {
-        id: closest.speakerId,
-        name: closest.speakerName
-      };
-    }
-    
-    // Fallback to current speaker
-    return detectCurrentSpeaker();
-  }, [detectCurrentSpeaker]);
 
-  // Map Deepgram speaker labels to actual participants
-  const mapSpeakerLabel = useCallback((speakerLabel: number | undefined, transcriptTimestamp: number): { id: string; name: string } => {
-    // If no speaker label from Deepgram, use speaking history
-    if (speakerLabel === undefined) {
-      console.log('⚠️ No speaker label from Deepgram, using speaking history');
-      return getSpeakerAtTime(transcriptTimestamp);
+  // Map Deepgram speaker labels to actual participants (EXACT SAME LOGIC AS ASSEMBLYAI)
+  const mapSpeakerLabel = useCallback((speakerLabel: number | undefined, transcriptTimestamp: number, words?: Array<{ start?: number; end?: number }>): { id: string; name: string } => {
+    // Resolve speaker using diarization + speaking history (same as AssemblyAI)
+    let resolved: { id: string; name: string } | null = null;
+    
+    if (speakerLabel !== undefined) {
+      // Check if we already mapped this speaker label
+      resolved = speakerMapRef.current.get(speakerLabel) || null;
     }
 
-    // ALWAYS use existing mapping if it exists - Deepgram's speaker labels are consistent
-    if (speakerMapRef.current.has(speakerLabel)) {
-      const mapped = speakerMapRef.current.get(speakerLabel)!;
-      console.log(`🔗 Using existing mapping: Speaker ${speakerLabel} → ${mapped.name} (${mapped.id})`);
-      return mapped;
-    }
-
-    // New speaker label - map it to whoever is currently speaking
-    const parts = participantsRef.current || [];
-    const local = localParticipantRef.current;
-    const speakingParticipants = parts.filter(p => p.isSpeaking);
-    
-    let speakerToMap: { id: string; name: string };
-    
-    // Priority: remote participants > local participant > last known speaker
-    if (speakingParticipants.length > 0) {
-      // Remote participant is speaking - use them
-      const speaker = speakingParticipants[0];
-      speakerToMap = {
-        id: speaker.userId,
-        name: speaker.name || speaker.userId?.split('@')[0] || `User ${speaker.userId}`
-      };
-      console.log(`🎯 Mapping Speaker ${speakerLabel} to remote participant: ${speakerToMap.name}`);
-    } else if (local?.isSpeaking) {
-      // Local participant is speaking
-      speakerToMap = {
-        id: local.userId,
-        name: local.name || local.userId?.split('@')[0] || 'You'
-      };
-      console.log(`🎯 Mapping Speaker ${speakerLabel} to local participant: ${speakerToMap.name}`);
-    } else {
-      // No one currently speaking - check speaking history
-      const speakerAtTime = getSpeakerAtTime(transcriptTimestamp);
+    // If still unknown, infer from speaking history over the turn time window (SAME AS ASSEMBLYAI)
+    if (!resolved) {
+      // Estimate time window from words if available; else last 2s
+      let startTs = Date.now() - 2000;
+      let endTs = Date.now();
       
-      // Check if this participant already has a different speaker label
-      const existingMappings = Array.from(speakerMapRef.current.entries());
-      const existingMapping = existingMappings.find(([_, info]) => info.id === speakerAtTime.id);
-      
-      if (existingMapping && existingMapping[0] !== speakerLabel) {
-        // This participant already has a different speaker label - this is a new participant
-        // Use the last known speaker from history, or create a new mapping
-        if (speakingHistoryRef.current.length > 0) {
-          const lastSpeaker = speakingHistoryRef.current[speakingHistoryRef.current.length - 1];
-          speakerToMap = {
-            id: lastSpeaker.speakerId,
-            name: lastSpeaker.speakerName
-          };
-          console.log(`🎯 Mapping Speaker ${speakerLabel} to last known speaker: ${speakerToMap.name}`);
-        } else {
-          // Fallback - but this shouldn't happen often
-          speakerToMap = {
-            id: local?.userId || user?.id || `speaker-${speakerLabel}`,
-            name: local?.name || user?.fullName || `Speaker ${speakerLabel}`
-          };
-          console.log(`⚠️ Fallback mapping Speaker ${speakerLabel} to: ${speakerToMap.name}`);
+      try {
+        if (words && words.length > 0) {
+          const first = words.find(w => typeof w.start === 'number');
+          const last = [...words].reverse().find(w => typeof w.end === 'number');
+          if (first?.start != null && last?.end != null) {
+            // Deepgram times are in seconds, convert to ms
+            const now = Date.now();
+            endTs = now;
+            startTs = now - Math.max(500, Math.min(5000, (last.end * 1000 - first.start * 1000)));
+          }
         }
-      } else {
-        speakerToMap = speakerAtTime;
-        console.log(`🎯 Mapping Speaker ${speakerLabel} to speaker at time: ${speakerToMap.name}`);
+      } catch {}
+
+      // Count which participant was speaking most during this time window (SAME AS ASSEMBLYAI)
+      const windowSamples = speakingHistoryRef.current.filter(s => s.ts >= startTs && s.ts <= endTs);
+      const counts = new Map<string, number>();
+      windowSamples.forEach(s => s.active.forEach(id => counts.set(id, (counts.get(id) || 0) + 1)));
+      
+      let topId: string | null = null;
+      let topCount = 0;
+      counts.forEach((c, id) => { 
+        if (c > topCount) { 
+          topCount = c; 
+          topId = id; 
+        } 
+      });
+
+      if (topId) {
+        // Resolve name by matching participants/local (SAME AS ASSEMBLYAI)
+        const parts = participantsRef.current || [];
+        const local = localParticipantRef.current;
+        let name = parts.find(p => p.userId === topId)?.name || '';
+        if (!name && local && local.userId === topId) {
+          name = local.name || user?.fullName || 'Host';
+        }
+        const fallbackName = name || (speakerLabel !== undefined ? `Speaker ${speakerLabel}` : 'Speaker').trim() || 'Speaker';
+        resolved = { id: topId, name: fallbackName };
+        
+        if (speakerLabel !== undefined) {
+          speakerMapRef.current.set(speakerLabel, resolved);
+          console.log('🔗 Inferred mapping', speakerLabel, '→', resolved.name, '(history-based)');
+        }
       }
     }
     
-    // Store the mapping - this is permanent for this session
-    speakerMapRef.current.set(speakerLabel, speakerToMap);
-    console.log(`✅ NEW MAPPING CREATED: Deepgram Speaker ${speakerLabel} → ${speakerToMap.name} (${speakerToMap.id})`);
-    console.log(`📊 All current mappings:`, Array.from(speakerMapRef.current.entries()).map(([label, info]) => 
-      `Speaker ${label}: ${info.name} (${info.id})`
-    ));
+    if (!resolved) {
+      // Fallback to current speaker or anonymous label (SAME AS ASSEMBLYAI)
+      const cur = currentSpeakerRef.current || {
+        id: (localParticipantRef.current?.userId) || user?.id || 'user-1',
+        name: (localParticipantRef.current?.name) || user?.fullName || (speakerLabel !== undefined ? `Speaker ${speakerLabel}` : 'Speaker'),
+      };
+      resolved = cur;
+      
+      if (speakerLabel !== undefined && !speakerMapRef.current.has(speakerLabel)) {
+        speakerMapRef.current.set(speakerLabel, resolved);
+        console.log('🔗 Fallback mapping', speakerLabel, '→', resolved.name);
+      }
+    }
     
-    return speakerToMap;
-  }, [getSpeakerAtTime, user]);
+    return resolved;
+  }, [user]);
 
   // Helper: attach a MediaStream to graph
   const attachStreamToGraph = useCallback((stream: MediaStream, label: string) => {
@@ -449,23 +374,41 @@ export const useDeepgramTranscription = (meetingId: string) => {
       const deepgramService = new DeepgramTranscriptionService(deepgramApiKey);
       serviceRef.current = deepgramService;
 
-      // Start continuous speaker detection
+      // Start speaker detection timer: sample Stream SDK's isSpeaking and build a small history buffer (SAME AS ASSEMBLYAI)
+      const sampleIntervalMs = 200;
       if (speakerDetectionTimerRef.current) {
         clearInterval(speakerDetectionTimerRef.current);
       }
       
       speakerDetectionTimerRef.current = setInterval(() => {
         detectCurrentSpeaker();
-      }, 200);
-      console.log('✅ Deepgram: Continuous speaker detection started');
+        try {
+          const actives: string[] = [];
+          const parts = participantsRef.current || [];
+          const local = localParticipantRef.current;
+          parts.forEach(p => { if (p.isSpeaking) actives.push(p.userId); });
+          if (local?.isSpeaking && !actives.includes(local.userId)) {
+            actives.push(local.userId);
+          }
+          speakingHistoryRef.current.push({ ts: Date.now(), active: actives });
+          // Keep last 30s (SAME AS ASSEMBLYAI)
+          const cutoff = Date.now() - 30000;
+          while (speakingHistoryRef.current.length > 0 && speakingHistoryRef.current[0].ts < cutoff) {
+            speakingHistoryRef.current.shift();
+          }
+        } catch {}
+      }, sampleIntervalMs);
+      console.log('✅ Deepgram: Continuous speaker detection started (same as AssemblyAI)');
 
       // Start Deepgram transcription
       console.log('🎙️ Deepgram: Starting transcription service...');
       deepgramService.startTranscription(
         (result: TranscriptionResult) => {
-          // Map Deepgram speaker label to actual participant using transcript timestamp
+          // Map Deepgram speaker label to actual participant (SAME LOGIC AS ASSEMBLYAI)
+          // Get words from the result if available for time window calculation
+          const words = (result as any).words || [];
           const transcriptTime = result.start || Date.now();
-          const speaker = mapSpeakerLabel(result.speakerLabel, transcriptTime);
+          const speaker = mapSpeakerLabel(result.speakerLabel, transcriptTime, words);
           
           const transcriptWithSpeaker: TranscriptionResult = {
             ...result,
